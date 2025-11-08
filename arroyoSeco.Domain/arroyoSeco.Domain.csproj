@@ -6,9 +6,4 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Folder Include="Entities\Alojamiento\" />
-    <Folder Include="Entities\Gastronomia\" />
-  </ItemGroup>
-
 </Project>
