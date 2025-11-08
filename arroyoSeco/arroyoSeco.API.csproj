@@ -14,9 +14,4 @@
     <ProjectReference Include="..\arroyoSeco.Application\arroyoSeco.Application.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Controllers\Alojamiento\" />
-    <Folder Include="Controllers\Gastronomia\" />
-  </ItemGroup>
-
 </Project>

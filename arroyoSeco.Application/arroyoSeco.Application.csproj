@@ -10,9 +10,4 @@
     <ProjectReference Include="..\arroyoSeco.Domain\arroyoSeco.Domain.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Features\Alojamiento\" />
-    <Folder Include="Features\Gastronomia\" />
-  </ItemGroup>
-
 </Project>
