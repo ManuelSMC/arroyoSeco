@@ -8,6 +8,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\arroyoSeco.Domain\arroyoSeco.Domain.csproj" />
+	<ProjectReference Include="..\arroyoSeco.Infrastructure\arroyoSeco.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Features\Alojamiento\Alojamiento\Queries\" />
+    <Folder Include="Features\Alojamiento\Oferente\Commands\" />
+    <Folder Include="Features\Alojamiento\Oferente\Queries\" />
   </ItemGroup>
 
 </Project>
