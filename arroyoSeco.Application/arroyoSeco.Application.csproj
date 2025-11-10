@@ -1,20 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\arroyoSeco.Domain\arroyoSeco.Domain.csproj" />
-	<ProjectReference Include="..\arroyoSeco.Infrastructure\arroyoSeco.Infrastructure.csproj" />
   </ItemGroup>
-
   <ItemGroup>
-    <Folder Include="Features\Alojamiento\Alojamiento\Queries\" />
-    <Folder Include="Features\Alojamiento\Oferente\Commands\" />
-    <Folder Include="Features\Alojamiento\Oferente\Queries\" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.5" />
   </ItemGroup>
-
+  <ItemGroup>
+    <Folder Include="Features\Alojamiento\Alojamiento\" />
+  </ItemGroup>
 </Project>

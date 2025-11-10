@@ -1,40 +1,54 @@
-﻿using arroyoSeco.Domain.Entities.Alojamientos;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using arroyoSeco.Domain.Entities.Alojamientos;
+using arroyoSeco.Domain.Entities.Notificaciones;
+using arroyoSeco.Domain.Entities.Solicitudes;
+using arroyoSeco.Application.Common.Interfaces;
+// Alias para desambiguar el Oferente correcto (de Usuarios)
+using UsuarioOferente = arroyoSeco.Domain.Entities.Usuarios.Oferente;
 
 namespace arroyoSeco.Infrastructure.Data;
 
-public class AppDbContext : DbContext
+public class AppDbContext : DbContext, IAppDbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<Oferente> Oferentes => Set<Oferente>();
+    // Implementación que coincide EXACTAMENTE con la interfaz (mismo tipo genérico)
+    public DbSet<UsuarioOferente> Oferentes => Set<UsuarioOferente>();
     public DbSet<Alojamiento> Alojamientos => Set<Alojamiento>();
     public DbSet<FotoAlojamiento> FotosAlojamiento => Set<FotoAlojamiento>();
+    public DbSet<Reserva> Reservas => Set<Reserva>();
+    public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
+    public DbSet<SolicitudOferente> SolicitudesOferente => Set<SolicitudOferente>();
 
-    protected override void OnModelCreating(ModelBuilder builder)
+    public new Task<int> SaveChangesAsync(CancellationToken ct = default) => base.SaveChangesAsync(ct);
+
+    protected override void OnModelCreating(ModelBuilder b)
     {
-        base.OnModelCreating(builder);
+        b.Entity<Alojamiento>()
+            .HasMany(a => a.Fotos)
+            .WithOne(f => f.Alojamiento)
+            .HasForeignKey(f => f.AlojamientoId)
+            .OnDelete(DeleteBehavior.Cascade);
 
-        builder.Entity<Oferente>(entity =>
-        {
-            entity.ToTable("Oferentes");
-            entity.HasKey(o => o.Id);
-            entity.Property(o => o.Id).HasMaxLength(450);
-            entity.Property(o => o.Estado).HasMaxLength(50);
-        });
+        b.Entity<Alojamiento>()
+            .HasMany(a => a.Reservas)
+            .WithOne(r => r.Alojamiento)
+            .HasForeignKey(r => r.AlojamientoId)
+            .OnDelete(DeleteBehavior.Cascade);
 
-        builder.Entity<Alojamiento>(entity =>
-        {
-            entity.ToTable("Alojamientos");
-            entity.HasKey(a => a.Id);
-            entity.Property(a => a.Estado).HasMaxLength(50);
-            entity.Property(a => a.FotoPrincipal).HasColumnType("LONGTEXT");
-        });
+        b.Entity<Alojamiento>()
+            .HasOne(a => a.Oferente)
+            .WithMany(o => o.Alojamientos)
+            .HasForeignKey(a => a.OferenteId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-        builder.Entity<FotoAlojamiento>(entity =>
-        {
-            entity.ToTable("FotosAlojamiento");
-            entity.Property(f => f.Url).HasColumnType("LONGTEXT");
-        });
+        b.Entity<Reserva>()
+            .HasIndex(r => r.Folio)
+            .IsUnique();
+
+        b.Entity<Notificacion>().HasIndex(n => n.UsuarioId);
+        b.Entity<SolicitudOferente>().HasIndex(s => s.Estatus);
+
+        base.OnModelCreating(b);
     }
 }
