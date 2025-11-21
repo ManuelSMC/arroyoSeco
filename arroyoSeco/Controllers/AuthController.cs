@@ -34,7 +34,8 @@ public class AuthController : ControllerBase
         var result = await _userManager.CreateAsync(user, dto.Password);
         if (!result.Succeeded) return BadRequest(result.Errors);
 
-        var role = string.IsNullOrWhiteSpace(dto.Role) ? "Oferente" : dto.Role!;
+        // Asignar por defecto rol Cliente (antes era Oferente)
+        var role = string.IsNullOrWhiteSpace(dto.Role) ? "Cliente" : dto.Role!;
         await _userManager.AddToRoleAsync(user, role);
 
         var roles = await _userManager.GetRolesAsync(user);

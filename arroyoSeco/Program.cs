@@ -3,6 +3,8 @@ using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.FileProviders;
 using System.Text;
 using arroyoSeco.Infrastructure.Data;
 using arroyoSeco.Infrastructure.Auth;
@@ -11,21 +13,73 @@ using arroyoSeco.Infrastructure.Services;
 using arroyoSeco.Application.Features.Alojamiento.Commands.Crear;
 using arroyoSeco.Application.Features.Reservas.Commands.Crear;
 using arroyoSeco.Application.Features.Reservas.Commands.CambiarEstado;
+using arroyoSeco.Infrastructure.Storage;
 using System.Text.Json.Serialization;
+using System.Runtime.ExceptionServices;
+using arroyoSeco.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Tamaño máximo del body a nivel Kestrel (50 MB)
+builder.WebHost.ConfigureKestrel(o =>
+{
+    o.Limits.MaxRequestBodySize = 50_000_000;
+});
+
+builder.WebHost.UseKestrel(o =>
+{
+    o.ListenLocalhost(7190, lo => lo.UseHttps()); // solo puerto seguro
+    // quita el puerto HTTP
+});
+
 builder.Services.AddHttpContextAccessor();
 
-// DbContexts
+// Capturar excepciones globales (si algo revienta mostrar log)
+AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+{
+    Console.WriteLine("UNHANDLED: " + e.ExceptionObject);
+};
+TaskScheduler.UnobservedTaskException += (s, e) =>
+{
+    Console.WriteLine("UNOBSERVED: " + e.Exception);
+    e.SetObserved();
+};
+AppDomain.CurrentDomain.FirstChanceException += (s, e) =>
+{
+    Console.WriteLine("FIRST CHANCE: " + e.Exception.GetType().Name + " - " + e.Exception.Message);
+};
+builder.Services.AddHostedService<ShutdownLogger>();
+builder.Services.Configure<FormOptions>(o =>
+{
+    o.MultipartBodyLengthLimit = 50_000_000;
+    o.ValueLengthLimit = int.MaxValue;
+    o.MemoryBufferThreshold = 1024 * 1024;
+});
+
+const string CorsPolicy = "FrontPolicy";
+builder.Services.AddCors(p =>
+{
+    p.AddPolicy(CorsPolicy, policy =>
+        policy
+            .WithOrigins("http://localhost:4200", "https://localhost:4200")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .SetPreflightMaxAge(TimeSpan.FromMinutes(10)));
+});
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySql(builder.Configuration.GetConnectionString("DefaultConnection"),
-        new MySqlServerVersion(new Version(8, 0, 36))));
+    options.UseMySql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        new MySqlServerVersion(new Version(8, 0, 36)),
+        mySql => mySql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery) // <- va dentro del delegate del provider
+    )
+    .EnableSensitiveDataLogging()
+);
+
 builder.Services.AddDbContext<AuthDbContext>(options =>
     options.UseMySql(builder.Configuration.GetConnectionString("DefaultConnection"),
         new MySqlServerVersion(new Version(8, 0, 36))));
 
-// Identity (Core) + SignInManager (necesario para inyectarlo en el AuthController)
 builder.Services
     .AddIdentityCore<IdentityUser>(opt =>
     {
@@ -38,10 +92,9 @@ builder.Services
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<AuthDbContext>()
-    .AddSignInManager() // <- agrega SignInManager para resolver la inyección
+    .AddSignInManager()
     .AddDefaultTokenProviders();
 
-// JWT (forzar como esquema por defecto para evitar challenge por cookies)
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()!;
 builder.Services.AddAuthentication(options =>
@@ -65,10 +118,8 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// Autorization: quitar FallbackPolicy para no proteger /swagger ni páginas inexistentes
 builder.Services.AddAuthorization();
 
-// App services
 builder.Services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -85,7 +136,6 @@ builder.Services.AddControllers()
         o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
-// Swagger + JWT
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -106,41 +156,56 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
+var storage = builder.Configuration.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
+if (string.IsNullOrWhiteSpace(storage.ComprobantesPath))
+{
+    storage.ComprobantesPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "arroyoSeco", "comprobantes");
+}
+builder.Services.PostConfigure<StorageOptions>(o =>
+{
+    if (string.IsNullOrWhiteSpace(o.ComprobantesPath))
+        o.ComprobantesPath = storage.ComprobantesPath;
+});
+
 var app = builder.Build();
 
-// Migraciones y seeding
-using (var scope = app.Services.CreateScope())
+// Middleware global de errores (evita cierre silencioso)
+app.Use(async (ctx, next) =>
 {
-    await scope.ServiceProvider.GetRequiredService<AuthDbContext>().Database.MigrateAsync();
-    await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
-
-    var roleMgr = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    foreach (var r in new[] { "Admin", "Oferente" })
-        if (!await roleMgr.RoleExistsAsync(r))
-            await roleMgr.CreateAsync(new IdentityRole(r));
-
-    var cfg = app.Configuration;
-    var adminEmail = cfg["SeedAdmin:Email"];
-    var adminPass = cfg["SeedAdmin:Password"];
-    if (!string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(adminPass))
+    try
     {
-        var userMgr = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var u = await userMgr.FindByEmailAsync(adminEmail);
-        if (u is null)
-        {
-            u = new IdentityUser { UserName = adminEmail, Email = adminEmail, EmailConfirmed = true };
-            var res = await userMgr.CreateAsync(u, adminPass);
-            if (res.Succeeded)
-                await userMgr.AddToRoleAsync(u, "Admin");
-        }
+        await next();
     }
-}
+    catch (Exception ex)
+    {
+        Console.WriteLine("GLOBAL EXCEPTION: " + ex);
+        ctx.Response.StatusCode = 500;
+        await ctx.Response.WriteAsync("Error interno");
+    }
+});
+
+// Crear carpeta y servir archivos
+var comprobantesPath = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<StorageOptions>>().Value.ComprobantesPath;
+Directory.CreateDirectory(comprobantesPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(comprobantesPath),
+    RequestPath = "/comprobantes"
+});
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
+app.UseCors(CorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Endpoint de salud para verificar que no se cayó
+app.MapGet("/health", () => Results.Ok("OK"));
+
 app.MapControllers();
 app.Run();
