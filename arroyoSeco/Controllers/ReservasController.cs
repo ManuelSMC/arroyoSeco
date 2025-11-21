@@ -396,7 +396,7 @@ public class ReservasController : ControllerBase
         });
         return Ok(result);
     }
-
+    //
     private async Task<Dictionary<string,string>> MapearNombres(IEnumerable<string> ids)
     {
         var dic = new Dictionary<string,string>();
