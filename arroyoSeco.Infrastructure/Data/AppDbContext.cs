@@ -42,9 +42,12 @@ public class AppDbContext : DbContext, IAppDbContext
             .HasForeignKey(a => a.OferenteId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        b.Entity<Reserva>()
-            .HasIndex(r => r.Folio)
-            .IsUnique();
+        b.Entity<Reserva>(e =>
+        {
+            e.HasIndex(r => r.Folio).IsUnique();
+            e.Property(r => r.Total).HasColumnType("decimal(65,30)");
+            e.Property(r => r.ComprobanteUrl).HasMaxLength(500);
+        });
 
         b.Entity<Notificacion>().HasIndex(n => n.UsuarioId);
         b.Entity<SolicitudOferente>().HasIndex(s => s.Estatus);

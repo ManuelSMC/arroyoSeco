@@ -14,4 +14,5 @@ public class Reserva
     public decimal Total { get; set; }
     public string Estado { get; set; } = "Pendiente";
     public DateTime FechaReserva { get; set; } = DateTime.UtcNow;
+    public string? ComprobanteUrl { get; set; }
 }

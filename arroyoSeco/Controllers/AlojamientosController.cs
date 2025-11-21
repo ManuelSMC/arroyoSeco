@@ -43,6 +43,20 @@ public class AlojamientosController : ControllerBase
         return a is null ? NotFound() : Ok(a);
     }
 
+    // Nuevo: rangos ocupados (Confirmada) para pintar en calendario
+    [AllowAnonymous]
+    [HttpGet("{id:int}/calendario")]
+    public async Task<IActionResult> Calendario(int id, CancellationToken ct)
+    {
+        var rangos = await _db.Reservas
+            .Where(r => r.AlojamientoId == id && r.Estado == "Confirmada")
+            .Select(r => new { inicio = r.FechaEntrada, fin = r.FechaSalida })
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        return Ok(rangos);
+    }
+
     // Solo Oferente autenticado: obtiene sus alojamientos
     [Authorize(Roles = "Oferente")]
     [HttpGet("mios")]

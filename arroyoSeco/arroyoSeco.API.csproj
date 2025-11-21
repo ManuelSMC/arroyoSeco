@@ -26,4 +26,8 @@
     <ProjectReference Include="..\arroyoSeco.Application\arroyoSeco.Application.csproj" />
     <ProjectReference Include="..\arroyoSeco.Domain\arroyoSeco.Domain.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="wwwroot\comprobantes\" />
+  </ItemGroup>
 </Project>
